@@ -1,14 +1,8 @@
-<<<<<<< HEAD
+
 streamlit
 pandas
 langchain
 langchain-community
 langchain-openai
-=======
-streamlit
-pandas
-langchain
-langchain-community
-langchain-openai
->>>>>>> c26d6d3e315ea54b1d9c159a991987d8c26b1506
+
 openai
