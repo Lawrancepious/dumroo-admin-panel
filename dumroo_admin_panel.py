@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import json
+import re
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableLambda
 import os
@@ -62,7 +63,7 @@ prompt = PromptTemplate(
     4. The region (if mentioned, e.g., North or South)
     5. The time period (if mentioned, e.g., last week, next week)
     
-    Return ONLY the extracted information in valid JSON format with keys: "data_type", "grade", "class", "region", "time_period".
+    Return ONLY a valid JSON object with keys: "data_type", "grade", "class", "region", "time_period", and NO additional text or comments.
     
     Query: {query}
     """,
@@ -83,6 +84,12 @@ def process_query(query, admin_role):
         # Parse query using Gemini
         parsed = chain.invoke({"query": query})
         st.write("Raw response:", parsed)  # Debug line
+        # Clean the response to remove invalid content and extract JSON
+        cleaned_response = re.search(r"\{.*\}", parsed, re.DOTALL)
+        if cleaned_response:
+            parsed = cleaned_response.group(0)
+        else:
+            parsed = parsed.strip()
         # Ensure the response is a string and attempt to parse as JSON
         if not isinstance(parsed, str):
             parsed = str(parsed)
