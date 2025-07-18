@@ -8,15 +8,49 @@ from langchain_core.runnables import RunnableLambda
 import os
 from datetime import datetime, timedelta
 
+# Set up page configuration for a better UI
+st.set_page_config(page_title="Dumroo Admin Panel", layout="wide", initial_sidebar_state="expanded")
+
 # Set up Gemini API key
 gemini_api_key = st.secrets.get("GEMINI_API_KEY")
 if not gemini_api_key:
-    st.error(
-        "Gemini API key not found. Please configure it in secrets.toml or environment variables."
-    )
+    st.error("Gemini API key not found. Please configure it in secrets.toml or environment variables.")
     st.stop()
 os.environ["GEMINI_API_KEY"] = gemini_api_key
 genai.configure(api_key=gemini_api_key)
+
+# Custom CSS for styling
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: #f0f2f6;
+    }
+    .sidebar .sidebar-content {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+    }
+    .stButton>button {
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 5px;
+        padding: 10px 20px;
+        font-size: 16px;
+    }
+    .stButton>button:hover {
+        background-color: #45a049;
+    }
+    .stTextInput>div>input {
+        border-radius: 5px;
+        padding: 10px;
+    }
+    .stExpander {
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # Sample dataset
 @st.cache_data
@@ -45,10 +79,14 @@ def check_access(admin_role, query_grade, query_class, query_region):
     scope = admin_scopes.get(admin_role)
     if not scope:
         return False
+    # Use admin scope as default if query parameters are null
+    effective_grade = query_grade if query_grade is not None else scope["grade"]
+    effective_class = query_class if query_class is not None else scope["class"]
+    effective_region = query_region if query_region is not None else scope["region"]
     return (
-        query_grade == scope["grade"]
-        and query_class == scope["class"]
-        and query_region == scope["region"]
+        effective_grade == scope["grade"]
+        and effective_class == scope["class"]
+        and effective_region == scope["region"]
     )
 
 # LangChain setup with Gemini
@@ -71,7 +109,6 @@ prompt = PromptTemplate(
 
 # Create a RunnableLambda to handle Gemini response
 def generate_gemini_response(prompt_value):
-    # Extract the text from StringPromptValue
     query_text = prompt_value.text if hasattr(prompt_value, "text") else str(prompt_value)
     response = model.generate_content(query_text)
     return response.text
@@ -81,39 +118,31 @@ chain = prompt | RunnableLambda(generate_gemini_response)
 # Process query and fetch data with fallback
 def process_query(query, admin_role):
     try:
-        # Parse query using Gemini
         parsed = chain.invoke({"query": query})
         st.write("Raw response:", parsed)  # Debug line
-        # Clean the response to remove invalid content and extract JSON
         cleaned_response = re.search(r"\{.*\}", parsed, re.DOTALL)
         if cleaned_response:
             parsed = cleaned_response.group(0)
         else:
             parsed = parsed.strip()
-        # Ensure the response is a string and attempt to parse as JSON
         if not isinstance(parsed, str):
             parsed = str(parsed)
         parsed_data = json.loads(parsed)
 
-        # Extract parsed information
         data_type = parsed_data.get("data_type")
-        query_grade = parsed_data.get("grade", 8)  # Default to grade 8
-        query_class = parsed_data.get("class", "A")  # Default to class A
-        query_region = parsed_data.get("region", "North")  # Default to North
+        query_grade = parsed_data.get("grade")  # No default yet, use admin scope
+        query_class = parsed_data.get("class")
+        query_region = parsed_data.get("region")
         time_period = parsed_data.get("time_period")
 
-        # Check access
         if not check_access(admin_role, query_grade, query_class, query_region):
             return "Access denied: You don't have permission to view this data."
 
-        # Load data
         df = load_data()
-
-        # Filter data based on query
         filtered_df = df[
-            (df["grade"] == query_grade)
-            & (df["class"] == query_class)
-            & (df["region"] == query_region)
+            (df["grade"] == (query_grade if query_grade is not None else admin_scopes[admin_role]["grade"]))
+            & (df["class"] == (query_class if query_class is not None else admin_scopes[admin_role]["class"]))
+            & (df["region"] == (query_region if query_region is not None else admin_scopes[admin_role]["region"]))
         ]
 
         if data_type == "homework":
@@ -121,31 +150,20 @@ def process_query(query, admin_role):
                 ["student_name"]
             ]
             return result.to_string() if not result.empty else "All homework submitted."
-
         elif data_type == "performance":
             if time_period == "last week":
                 last_week = datetime.now() - timedelta(days=7)
                 result = filtered_df[filtered_df["quiz_date"] >= last_week][
                     ["student_name", "quiz_score"]
                 ]
-                return (
-                    result.to_string()
-                    if not result.empty
-                    else "No performance data for last week."
-                )
-
+                return result.to_string() if not result.empty else "No performance data for last week."
         elif data_type == "quizzes":
             if time_period == "next week":
                 next_week = datetime.now() + timedelta(days=7)
                 result = filtered_df[filtered_df["upcoming_quiz"] <= next_week][
                     ["student_name", "upcoming_quiz"]
                 ]
-                return (
-                    result.to_string()
-                    if not result.empty
-                    else "No quizzes scheduled for next week."
-                )
-
+                return result.to_string() if not result.empty else "No quizzes scheduled for next week."
         return "Unable to process query."
 
     except json.JSONDecodeError:
@@ -153,56 +171,51 @@ def process_query(query, admin_role):
     except Exception as e:
         return f"Error processing query: {str(e)}"
 
-# Streamlit UI with Bonus Features
+# Streamlit UI with Enhanced Design
+with st.sidebar:
+    st.image("https://via.placeholder.com/150", use_column_width=True)  # Placeholder logo
+    st.title("Admin Dashboard")
+    admin_role = st.selectbox("Select your admin role", ["grade_8_admin", "grade_9_admin"], key="role_select")
+
 st.title("Dumroo Admin Panel")
 st.write("Ask questions about student data in plain English")
 
-# Admin role selection
-admin_role = st.selectbox("Select your admin role", ["grade_8_admin", "grade_9_admin"])
+col1, col2 = st.columns([2, 1])
+with col1:
+    query = st.text_input("Enter your query", placeholder="e.g., Which students haven't submitted their homework yet?", key="query_input")
+with col2:
+    if st.button("Submit Query", key="submit_button"):
+        pass  # Button action handled below
 
-# Query input with history (Bonus: Agent-style handling)
-if "query_history" not in st.session_state:
-    st.session_state.query_history = []
-query = st.text_input(
-    "Enter your query",
-    placeholder="e.g., Which students haven't submitted their homework yet?",
-    key="query_input",
-)
+if query and st.session_state.get("submit_button", False):
+    result = process_query(query, admin_role)
+    if "query_history" not in st.session_state:
+        st.session_state.query_history = []
+    st.session_state.query_history.append({"query": query, "result": result})
+    st.session_state.submit_button = False  # Reset button state
+    st.success("Query processed!")
+    st.write("Result:")
+    st.write(result)
 
-# Process query when button is clicked
-if st.button("Submit Query"):
-    if query:
-        result = process_query(query, admin_role)
-        st.session_state.query_history.append({"query": query, "result": result})
-        st.write("Result:")
-        st.write(result)
-    else:
-        st.write("Please enter a query.")
+if st.session_state.get("query_history"):
+    with st.expander("Query History"):
+        for i, entry in enumerate(reversed(st.session_state.query_history[-5:])):  # Limit to last 5
+            st.write(f"**Query {len(st.session_state.query_history) - i}:** {entry['query']}")
+            st.write(f"**Result:** {entry['result']}")
 
-# Display query history (Bonus: Agent-style handling)
-if st.session_state.query_history:
-    st.subheader("Query History")
-    for i, entry in enumerate(reversed(st.session_state.query_history)):
-        with st.expander(
-            f"Query {len(st.session_state.query_history) - i}: {entry['query']}"
-        ):
-            st.write("Result:", entry["result"])
-
-# Example queries
 st.subheader("Example Queries")
 st.write("- Which students haven't submitted their homework yet?")
 st.write("- Show me performance data for Grade 8 from last week")
 st.write("- List all upcoming quizzes scheduled for next week")
 
+with st.expander("Dataset Preview"):
+    st.dataframe(load_data(), use_container_width=True)
+
 # Bonus: Modular database connection (placeholder for real DB)
 def connect_to_db():
-    # Placeholder for future DB connection (e.g., SQLAlchemy)
     st.write("Database connection not implemented. Using cached data.")
     return load_data()
 
-# Option to switch to DB (Bonus: Modularity)
 if st.checkbox("Use Database (Demo)"):
     df = connect_to_db()
     st.write("Data loaded from database (simulated):", df)
-else:
-    st.write("Using cached sample data.")
