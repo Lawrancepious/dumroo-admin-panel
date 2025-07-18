@@ -24,7 +24,7 @@ st.markdown("""
     <style>
     .stApp {
         background-color: #f0f2f6;
-        color: #333333; /* Ensure text is visible */
+        color: #333333;
     }
     .sidebar .sidebar-content {
         background-color: #ffffff;
@@ -58,6 +58,11 @@ st.markdown("""
         background-color: #ffffff;
         border-radius: 5px;
     }
+    .result-table {
+        background-color: #ffffff;
+        padding: 10px;
+        border-radius: 5px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -79,7 +84,7 @@ def load_data():
     df["upcoming_quiz"] = pd.to_datetime(df["upcoming_quiz"])
     return df
 
-# Role-based access control (moved to global scope)
+# Role-based access control
 admin_scopes = {
     "grade_8_admin": {"grade": 8, "class": "A", "region": "North"},
     "grade_9_admin": {"grade": 9, "class": "B", "region": "South"},
@@ -133,7 +138,7 @@ def process_query(query, admin_role):
         if cleaned_response:
             parsed = cleaned_response.group(0)
         else:
-            parsed = parsed.strip().replace("undefined", "")  # Remove undefined if present
+            parsed = parsed.strip().replace("undefined", "")
         if not isinstance(parsed, str):
             parsed = str(parsed)
         parsed_data = json.loads(parsed)
@@ -148,7 +153,7 @@ def process_query(query, admin_role):
             return "Access denied: You don't have permission to view this data."
 
         df = load_data()
-        scope = admin_scopes[admin_role]  # Use admin scope directly
+        scope = admin_scopes[admin_role]
         filtered_df = df[
             (df["grade"] == (query_grade if query_grade is not None else scope["grade"]))
             & (df["class"] == (query_class if query_class is not None else scope["class"]))
@@ -159,27 +164,27 @@ def process_query(query, admin_role):
             result = filtered_df[filtered_df["homework_submitted"] == False][
                 ["student_name"]
             ]
-            return result.to_string() if not result.empty else "All homework submitted."
+            return result if not result.empty else pd.DataFrame({"Message": ["All homework submitted"]})
         elif data_type == "performance":
             if time_period == "last week":
                 last_week = datetime.now() - timedelta(days=7)
                 result = filtered_df[filtered_df["quiz_date"] >= last_week][
                     ["student_name", "quiz_score"]
                 ]
-                return result.to_string() if not result.empty else "No performance data for last week."
+                return result if not result.empty else pd.DataFrame({"Message": ["No performance data for last week"]})
         elif data_type == "quizzes":
             if time_period == "next week":
                 next_week = datetime.now() + timedelta(days=7)
                 result = filtered_df[filtered_df["upcoming_quiz"] <= next_week][
                     ["student_name", "upcoming_quiz"]
                 ]
-                return result.to_string() if not result.empty else "No quizzes scheduled for next week."
-        return "Unable to process query."
+                return result if not result.empty else pd.DataFrame({"Message": ["No quizzes scheduled for next week"]})
+        return pd.DataFrame({"Message": ["Unable to process query"]})
 
     except json.JSONDecodeError:
-        return "Error: Invalid JSON response from AI. Please ensure the query is clear. Raw response: " + str(parsed)
+        return pd.DataFrame({"Error": [f"Invalid JSON response from AI. Raw response: {parsed}"]})
     except Exception as e:
-        return f"Error processing query: {str(e)}"
+        return pd.DataFrame({"Error": [f"Error processing query: {str(e)}"]})
 
 # Streamlit UI with Enhanced Design
 with st.sidebar:
@@ -203,13 +208,13 @@ with st.form(key="query_form"):
         st.session_state.query_history.append({"query": query, "result": result})
         st.success("Query processed!")
         st.write("Result:")
-        st.write(result)
+        st.dataframe(result, use_container_width=True, hide_index=True)
 
 if st.session_state.get("query_history"):
     with st.expander("Query History"):
         for i, entry in enumerate(reversed(st.session_state.query_history[-5:])):
             st.write(f"**Query {len(st.session_state.query_history) - i}:** {entry['query']}")
-            st.write(f"**Result:** {entry['result']}")
+            st.dataframe(entry["result"], use_container_width=True, hide_index=True)
 
 st.subheader("Example Queries")
 st.write("- Which students haven't submitted their homework yet?")
