@@ -66,18 +66,21 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Sample dataset
+# Sample dataset with more data
 @st.cache_data
 def load_data():
     data = {
-        "student_name": ["Alice Smith", "Bob Johnson", "Charlie Brown", "Diana Wilson"],
-        "grade": [8, 8, 9, 9],
-        "class": ["A", "A", "B", "B"],
-        "region": ["North", "North", "South", "South"],
-        "homework_submitted": [True, False, True, False],
-        "quiz_score": [85, 0, 90, 0],
-        "quiz_date": ["2025-07-10", "2025-07-10", "2025-07-17", "2025-07-17"],
-        "upcoming_quiz": ["2025-07-20", "2025-07-20", "2025-07-21", "2025-07-21"],
+        "student_name": ["Alice Smith", "Bob Johnson", "Charlie Brown", "Diana Wilson", 
+                        "Eve Davis", "Frank Miller", "Grace Lee", "Hank Taylor"],
+        "grade": [8, 8, 9, 9, 8, 9, 8, 9],
+        "class": ["A", "A", "B", "B", "A", "B", "A", "B"],
+        "region": ["North", "North", "South", "South", "North", "South", "North", "South"],
+        "homework_submitted": [True, False, True, False, False, True, True, False],
+        "quiz_score": [85, 0, 90, 0, 75, 88, 92, 0],
+        "quiz_date": ["2025-07-10", "2025-07-10", "2025-07-17", "2025-07-17", 
+                      "2025-07-15", "2025-07-16", "2025-07-12", "2025-07-14"],
+        "upcoming_quiz": ["2025-07-20", "2025-07-20", "2025-07-21", "2025-07-21", 
+                         "2025-07-22", "2025-07-23", "2025-07-24", "2025-07-25"],
     }
     df = pd.DataFrame(data)
     df["quiz_date"] = pd.to_datetime(df["quiz_date"])
@@ -131,60 +134,63 @@ chain = prompt | RunnableLambda(generate_gemini_response)
 
 # Process query and fetch data with fallback
 def process_query(query, admin_role):
-    try:
-        parsed = chain.invoke({"query": query})
-        st.write("Raw response:", parsed)
-        cleaned_response = re.search(r"\{.*\}", parsed, re.DOTALL)
-        if cleaned_response:
-            parsed = cleaned_response.group(0)
-        else:
-            parsed = parsed.strip().replace("undefined", "")
-        if not isinstance(parsed, str):
-            parsed = str(parsed)
-        parsed_data = json.loads(parsed)
+    with st.spinner("Processing your query..."):
+        try:
+            parsed = chain.invoke({"query": query})
+            st.write("Raw response:", parsed)
+            cleaned_response = re.search(r"\{.*\}", parsed, re.DOTALL)
+            if cleaned_response:
+                parsed = cleaned_response.group(0)
+            else:
+                parsed = parsed.strip().replace("undefined", "")
+            if not isinstance(parsed, str):
+                parsed = str(parsed)
+            parsed_data = json.loads(parsed)
 
-        data_type = parsed_data.get("data_type")
-        query_grade = parsed_data.get("grade")
-        query_class = parsed_data.get("class")
-        query_region = parsed_data.get("region")
-        time_period = parsed_data.get("time_period")
+            data_type = parsed_data.get("data_type")
+            query_grade = parsed_data.get("grade")
+            query_class = parsed_data.get("class")
+            query_region = parsed_data.get("region")
+            time_period = parsed_data.get("time_period")
 
-        if not check_access(admin_role, query_grade, query_class, query_region):
-            return "Access denied: You don't have permission to view this data."
+            if not check_access(admin_role, query_grade, query_class, query_region):
+                return pd.DataFrame({"Message": ["Access denied: You don't have permission to view this data."]})
 
-        df = load_data()
-        scope = admin_scopes[admin_role]
-        filtered_df = df[
-            (df["grade"] == (query_grade if query_grade is not None else scope["grade"]))
-            & (df["class"] == (query_class if query_class is not None else scope["class"]))
-            & (df["region"] == (query_region if query_region is not None else scope["region"]))
-        ]
-
-        if data_type == "homework":
-            result = filtered_df[filtered_df["homework_submitted"] == False][
-                ["student_name"]
+            df = load_data()
+            scope = admin_scopes[admin_role]
+            filtered_df = df[
+                (df["grade"] == (query_grade if query_grade is not None else scope["grade"]))
+                & (df["class"] == (query_class if query_class is not None else scope["class"]))
+                & (df["region"] == (query_region if query_region is not None else scope["region"]))
             ]
-            return result if not result.empty else pd.DataFrame({"Message": ["All homework submitted"]})
-        elif data_type == "performance":
-            if time_period == "last week":
-                last_week = datetime.now() - timedelta(days=7)
-                result = filtered_df[filtered_df["quiz_date"] >= last_week][
-                    ["student_name", "quiz_score"]
-                ]
-                return result if not result.empty else pd.DataFrame({"Message": ["No performance data for last week"]})
-        elif data_type == "quizzes":
-            if time_period == "next week":
-                next_week = datetime.now() + timedelta(days=7)
-                result = filtered_df[filtered_df["upcoming_quiz"] <= next_week][
-                    ["student_name", "upcoming_quiz"]
-                ]
-                return result if not result.empty else pd.DataFrame({"Message": ["No quizzes scheduled for next week"]})
-        return pd.DataFrame({"Message": ["Unable to process query"]})
 
-    except json.JSONDecodeError:
-        return pd.DataFrame({"Error": [f"Invalid JSON response from AI. Raw response: {parsed}"]})
-    except Exception as e:
-        return pd.DataFrame({"Error": [f"Error processing query: {str(e)}"]})
+            if data_type == "homework":
+                result = filtered_df[filtered_df["homework_submitted"] == False][
+                    ["student_name"]
+                ]
+                return result if not result.empty else pd.DataFrame({"Message": ["All homework submitted"]})
+            elif data_type == "performance":
+                if time_period == "last week":
+                    last_week_start = datetime.now() - timedelta(days=7)
+                    last_week_end = datetime.now() - timedelta(days=1)
+                    result = filtered_df[
+                        (filtered_df["quiz_date"] >= last_week_start) & (filtered_df["quiz_date"] <= last_week_end)
+                    ][["student_name", "quiz_score"]]
+                    return result if not result.empty else pd.DataFrame({"Message": ["No performance data for last week"]})
+            elif data_type == "quizzes":
+                if time_period == "next week":
+                    next_week_start = datetime.now() + timedelta(days=1)
+                    next_week_end = datetime.now() + timedelta(days=7)
+                    result = filtered_df[
+                        (filtered_df["upcoming_quiz"] >= next_week_start) & (filtered_df["upcoming_quiz"] <= next_week_end)
+                    ][["student_name", "upcoming_quiz"]]
+                    return result if not result.empty else pd.DataFrame({"Message": ["No quizzes scheduled for next week"]})
+            return pd.DataFrame({"Message": ["Unable to process query"]})
+
+        except json.JSONDecodeError:
+            return pd.DataFrame({"Error": [f"Invalid JSON response from AI. Raw response: {parsed}"]})
+        except Exception as e:
+            return pd.DataFrame({"Error": [f"Error processing query: {str(e)}"]})
 
 # Streamlit UI with Enhanced Design
 with st.sidebar:
@@ -195,6 +201,7 @@ with st.sidebar:
 st.title("Dumroo Admin Panel")
 st.write("Ask questions about student data in plain English")
 
+result_placeholder = st.empty()
 with st.form(key="query_form"):
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -207,14 +214,13 @@ with st.form(key="query_form"):
             st.session_state.query_history = []
         st.session_state.query_history.append({"query": query, "result": result})
         st.success("Query processed!")
-        st.write("Result:")
-        st.dataframe(result, use_container_width=True, hide_index=True)
+        result_placeholder.dataframe(result, use_container_width=True, hide_index=True)
 
 if st.session_state.get("query_history"):
     with st.expander("Query History"):
         for i, entry in enumerate(reversed(st.session_state.query_history[-5:])):
-            st.write(f"**Query {len(st.session_state.query_history) - i}:** {entry['query']}")
-            st.dataframe(entry["result"], use_container_width=True, hide_index=True)
+            with st.expander(f"Query {len(st.session_state.query_history) - i}: {entry['query']}"):
+                st.dataframe(entry["result"], use_container_width=True, hide_index=True)
 
 st.subheader("Example Queries")
 st.write("- Which students haven't submitted their homework yet?")
