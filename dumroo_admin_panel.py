@@ -37,7 +37,7 @@ st.markdown("""
         border-radius: 5px;
         padding: 10px 20px;
         font-size: 16px;
-        visibility: visible !important; /* Ensure button is visible */
+        visibility: visible !important;
     }
     .stButton>button:hover {
         background-color: #45a049;
@@ -47,7 +47,7 @@ st.markdown("""
         padding: 10px;
         background-color: #ffffff;
         color: #333333;
-        visibility: visible !important; /* Ensure input is visible */
+        visibility: visible !important;
     }
     .stExpander {
         border: 1px solid #ddd;
@@ -59,7 +59,7 @@ st.markdown("""
         padding: 10px;
         background-color: #ffffff;
         border-radius: 5px;
-        visibility: visible !important; /* Ensure form is visible */
+        visibility: visible !important;
     }
     .result-table {
         background-color: #ffffff;
@@ -100,7 +100,6 @@ def check_access(admin_role, query_grade, query_class, query_region):
     scope = admin_scopes.get(admin_role)
     if not scope:
         return False
-    # Convert query_grade to int if it's a string, handle None
     effective_grade = int(query_grade) if query_grade is not None and query_grade.isdigit() else scope["grade"]
     effective_class = query_class if query_class is not None else scope["class"]
     effective_region = query_region if query_region is not None else scope["region"]
@@ -122,7 +121,7 @@ prompt = PromptTemplate(
     4. The region (if mentioned, e.g., North or South)
     5. The time period (if mentioned, e.g., last week, next week)
     
-    Return ONLY a valid JSON object with keys: "data_type", "grade", "class", "region", "time_period", and NO additional text or comments.
+    Return ONLY a valid JSON object with keys: "data_type", "grade", "class", "region", "time_period". Ensure the output contains no additional text or comments.
     
     Query: {query}
     """,
@@ -146,9 +145,9 @@ def process_query(query, admin_role):
             if cleaned_response:
                 parsed = cleaned_response.group(0)
             else:
-                parsed = parsed.strip().replace("undefined", "")
-            if not isinstance(parsed, str):
-                parsed = str(parsed)
+                parsed = parsed.strip().replace("undefined", "").replace("\n", "")
+            if not parsed or not isinstance(parsed, str):
+                return pd.DataFrame({"Error": ["No valid response from AI"]})
             parsed_data = json.loads(parsed)
 
             data_type = parsed_data.get("data_type")
@@ -189,7 +188,7 @@ def process_query(query, admin_role):
                         (filtered_df["upcoming_quiz"] >= next_week_start) & (filtered_df["upcoming_quiz"] <= next_week_end)
                     ][["student_name", "upcoming_quiz"]]
                     return result if not result.empty else pd.DataFrame({"Message": ["No quizzes scheduled for next week"]})
-            return pd.DataFrame({"Message": ["Unable to process query"]})
+            return pd.DataFrame({"Message": ["Unable to process query. Please use a valid query format."]})
 
         except json.JSONDecodeError:
             return pd.DataFrame({"Error": [f"Invalid JSON response from AI. Raw response: {parsed}"]})
@@ -207,12 +206,12 @@ st.write("Ask questions about student data in plain English")
 
 result_placeholder = st.empty()
 with st.form(key="query_form"):
-    col1, col2 = st.columns([3, 1])  # Adjusted column ratio for better visibility
+    col1, col2 = st.columns([3, 1])
     with col1:
-        st.write("Enter your query")  # Explicitly label the input
+        st.write("Enter your query")
         query = st.text_input("", placeholder="e.g., Which students haven't submitted their homework yet?", key="query_input")
     with col2:
-        st.write("Submit Query")  # Explicitly label the button
+        st.write("Submit Query")
         submit_button = st.form_submit_button("Submit")
     if submit_button and query:
         result = process_query(query, admin_role)
