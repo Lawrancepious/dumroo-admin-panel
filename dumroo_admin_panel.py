@@ -24,6 +24,7 @@ st.markdown("""
     <style>
     .stApp {
         background-color: #f0f2f6;
+        color: #333333; /* Ensure text is visible */
     }
     .sidebar .sidebar-content {
         background-color: #ffffff;
@@ -43,11 +44,19 @@ st.markdown("""
     .stTextInput>div>input {
         border-radius: 5px;
         padding: 10px;
+        background-color: #ffffff;
+        color: #333333;
     }
     .stExpander {
         border: 1px solid #ddd;
         border-radius: 5px;
         padding: 10px;
+        background-color: #ffffff;
+    }
+    .stForm {
+        padding: 10px;
+        background-color: #ffffff;
+        border-radius: 5px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -79,7 +88,6 @@ def check_access(admin_role, query_grade, query_class, query_region):
     scope = admin_scopes.get(admin_role)
     if not scope:
         return False
-    # Use admin scope as default if query parameters are null
     effective_grade = query_grade if query_grade is not None else scope["grade"]
     effective_class = query_class if query_class is not None else scope["class"]
     effective_region = query_region if query_region is not None else scope["region"]
@@ -119,18 +127,18 @@ chain = prompt | RunnableLambda(generate_gemini_response)
 def process_query(query, admin_role):
     try:
         parsed = chain.invoke({"query": query})
-        st.write("Raw response:", parsed)  # Debug line
+        st.write("Raw response:", parsed)
         cleaned_response = re.search(r"\{.*\}", parsed, re.DOTALL)
         if cleaned_response:
             parsed = cleaned_response.group(0)
         else:
-            parsed = parsed.strip()
+            parsed = parsed.strip().replace("undefined", "")  # Remove undefined if present
         if not isinstance(parsed, str):
             parsed = str(parsed)
         parsed_data = json.loads(parsed)
 
         data_type = parsed_data.get("data_type")
-        query_grade = parsed_data.get("grade")  # No default yet, use admin scope
+        query_grade = parsed_data.get("grade")
         query_class = parsed_data.get("class")
         query_region = parsed_data.get("region")
         time_period = parsed_data.get("time_period")
@@ -173,29 +181,27 @@ def process_query(query, admin_role):
 
 # Streamlit UI with Enhanced Design
 with st.sidebar:
-    st.image("https://via.placeholder.com/150", use_column_width=True)  # Placeholder logo
+    st.image("https://via.placeholder.com/150", use_container_width=True)  # Updated to use_container_width
     st.title("Admin Dashboard")
     admin_role = st.selectbox("Select your admin role", ["grade_8_admin", "grade_9_admin"], key="role_select")
 
 st.title("Dumroo Admin Panel")
 st.write("Ask questions about student data in plain English")
 
-col1, col2 = st.columns([2, 1])
-with col1:
-    query = st.text_input("Enter your query", placeholder="e.g., Which students haven't submitted their homework yet?", key="query_input")
-with col2:
-    if st.button("Submit Query", key="submit_button"):
-        pass  # Button action handled below
-
-if query and st.session_state.get("submit_button", False):
-    result = process_query(query, admin_role)
-    if "query_history" not in st.session_state:
-        st.session_state.query_history = []
-    st.session_state.query_history.append({"query": query, "result": result})
-    st.session_state.submit_button = False  # Reset button state
-    st.success("Query processed!")
-    st.write("Result:")
-    st.write(result)
+with st.form(key="query_form"):
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        query = st.text_input("Enter your query", placeholder="e.g., Which students haven't submitted their homework yet?", key="query_input")
+    with col2:
+        submit_button = st.form_submit_button("Submit Query")
+    if submit_button and query:
+        result = process_query(query, admin_role)
+        if "query_history" not in st.session_state:
+            st.session_state.query_history = []
+        st.session_state.query_history.append({"query": query, "result": result})
+        st.success("Query processed!")
+        st.write("Result:")
+        st.write(result)
 
 if st.session_state.get("query_history"):
     with st.expander("Query History"):
