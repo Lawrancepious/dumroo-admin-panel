@@ -79,12 +79,13 @@ def load_data():
     df["upcoming_quiz"] = pd.to_datetime(df["upcoming_quiz"])
     return df
 
-# Role-based access control
+# Role-based access control (moved to global scope)
+admin_scopes = {
+    "grade_8_admin": {"grade": 8, "class": "A", "region": "North"},
+    "grade_9_admin": {"grade": 9, "class": "B", "region": "South"},
+}
+
 def check_access(admin_role, query_grade, query_class, query_region):
-    admin_scopes = {
-        "grade_8_admin": {"grade": 8, "class": "A", "region": "North"},
-        "grade_9_admin": {"grade": 9, "class": "B", "region": "South"},
-    }
     scope = admin_scopes.get(admin_role)
     if not scope:
         return False
@@ -147,10 +148,11 @@ def process_query(query, admin_role):
             return "Access denied: You don't have permission to view this data."
 
         df = load_data()
+        scope = admin_scopes[admin_role]  # Use admin scope directly
         filtered_df = df[
-            (df["grade"] == (query_grade if query_grade is not None else admin_scopes[admin_role]["grade"]))
-            & (df["class"] == (query_class if query_class is not None else admin_scopes[admin_role]["class"]))
-            & (df["region"] == (query_region if query_region is not None else admin_scopes[admin_role]["region"]))
+            (df["grade"] == (query_grade if query_grade is not None else scope["grade"]))
+            & (df["class"] == (query_class if query_class is not None else scope["class"]))
+            & (df["region"] == (query_region if query_region is not None else scope["region"]))
         ]
 
         if data_type == "homework":
@@ -181,7 +183,7 @@ def process_query(query, admin_role):
 
 # Streamlit UI with Enhanced Design
 with st.sidebar:
-    st.image("https://via.placeholder.com/150", use_container_width=True)  # Updated to use_container_width
+    st.image("https://via.placeholder.com/150", use_container_width=True)
     st.title("Admin Dashboard")
     admin_role = st.selectbox("Select your admin role", ["grade_8_admin", "grade_9_admin"], key="role_select")
 
@@ -205,7 +207,7 @@ with st.form(key="query_form"):
 
 if st.session_state.get("query_history"):
     with st.expander("Query History"):
-        for i, entry in enumerate(reversed(st.session_state.query_history[-5:])):  # Limit to last 5
+        for i, entry in enumerate(reversed(st.session_state.query_history[-5:])):
             st.write(f"**Query {len(st.session_state.query_history) - i}:** {entry['query']}")
             st.write(f"**Result:** {entry['result']}")
 
