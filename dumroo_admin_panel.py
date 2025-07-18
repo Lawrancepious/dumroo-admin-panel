@@ -37,6 +37,7 @@ st.markdown("""
         border-radius: 5px;
         padding: 10px 20px;
         font-size: 16px;
+        visibility: visible !important; /* Ensure button is visible */
     }
     .stButton>button:hover {
         background-color: #45a049;
@@ -46,6 +47,7 @@ st.markdown("""
         padding: 10px;
         background-color: #ffffff;
         color: #333333;
+        visibility: visible !important; /* Ensure input is visible */
     }
     .stExpander {
         border: 1px solid #ddd;
@@ -57,6 +59,7 @@ st.markdown("""
         padding: 10px;
         background-color: #ffffff;
         border-radius: 5px;
+        visibility: visible !important; /* Ensure form is visible */
     }
     .result-table {
         background-color: #ffffff;
@@ -97,7 +100,8 @@ def check_access(admin_role, query_grade, query_class, query_region):
     scope = admin_scopes.get(admin_role)
     if not scope:
         return False
-    effective_grade = query_grade if query_grade is not None else scope["grade"]
+    # Convert query_grade to int if it's a string, handle None
+    effective_grade = int(query_grade) if query_grade is not None and query_grade.isdigit() else scope["grade"]
     effective_class = query_class if query_class is not None else scope["class"]
     effective_region = query_region if query_region is not None else scope["region"]
     return (
@@ -159,7 +163,7 @@ def process_query(query, admin_role):
             df = load_data()
             scope = admin_scopes[admin_role]
             filtered_df = df[
-                (df["grade"] == (query_grade if query_grade is not None else scope["grade"]))
+                (df["grade"] == (int(query_grade) if query_grade is not None and query_grade.isdigit() else scope["grade"]))
                 & (df["class"] == (query_class if query_class is not None else scope["class"]))
                 & (df["region"] == (query_region if query_region is not None else scope["region"]))
             ]
@@ -203,11 +207,13 @@ st.write("Ask questions about student data in plain English")
 
 result_placeholder = st.empty()
 with st.form(key="query_form"):
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([3, 1])  # Adjusted column ratio for better visibility
     with col1:
-        query = st.text_input("Enter your query", placeholder="e.g., Which students haven't submitted their homework yet?", key="query_input")
+        st.write("Enter your query")  # Explicitly label the input
+        query = st.text_input("", placeholder="e.g., Which students haven't submitted their homework yet?", key="query_input")
     with col2:
-        submit_button = st.form_submit_button("Submit Query")
+        st.write("Submit Query")  # Explicitly label the button
+        submit_button = st.form_submit_button("Submit")
     if submit_button and query:
         result = process_query(query, admin_role)
         if "query_history" not in st.session_state:
