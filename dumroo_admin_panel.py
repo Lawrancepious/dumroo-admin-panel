@@ -7,8 +7,14 @@ import os
 import json
 from datetime import datetime, timedelta
 
-# Set up OpenAI API key
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+
+openai_api_key = st.secrets.get("OPENAI_API_KEY")
+if not openai_api_key:
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
+if not openai_api_key:
+    st.error("OpenAI API key not found. Please configure it in secrets.toml or environment variables.")
+    st.stop()
+os.environ["OPENAI_API_KEY"] = openai_api_key
 
 
 # Sample dataset
