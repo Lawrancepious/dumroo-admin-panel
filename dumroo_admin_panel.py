@@ -62,14 +62,15 @@ prompt = PromptTemplate(
     4. The region (if mentioned, e.g., North or South)
     5. The time period (if mentioned, e.g., last week, next week)
     
-    Return the extracted information in valid JSON format with keys: "data_type", "grade", "class", "region", "time_period".
+    Return ONLY the extracted information in valid JSON format with keys: "data_type", "grade", "class", "region", "time_period".
     
     Query: {query}
     """,
 )
 
-# Create a RunnableSequence with proper handling
-def generate_gemini_response(query):
+# Create a RunnableLambda to handle Gemini response
+def generate_gemini_response(input_data):
+    query = input_data.get("query", "")
     response = model.generate_content(query)
     return response.text
 
@@ -80,6 +81,7 @@ def process_query(query, admin_role):
     try:
         # Parse query using Gemini
         parsed = chain.invoke({"query": query})
+        st.write("Raw response:", parsed)  # Debug line
         # Ensure the response is a string and attempt to parse as JSON
         if not isinstance(parsed, str):
             parsed = str(parsed)
@@ -139,7 +141,7 @@ def process_query(query, admin_role):
         return "Unable to process query."
 
     except json.JSONDecodeError:
-        return "Error: Invalid JSON response from AI. Please ensure the query is clear."
+        return "Error: Invalid JSON response from AI. Please ensure the query is clear. Raw response: " + str(parsed)
     except Exception as e:
         return f"Error processing query: {str(e)}"
 
