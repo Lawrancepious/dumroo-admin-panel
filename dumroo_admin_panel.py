@@ -1,21 +1,19 @@
 import streamlit as st
 import pandas as pd
-from langchain_community.llms import OpenAI  # Updated import
-from langchain_core.prompts import PromptTemplate  # Updated import
-from langchain_core.runnables import RunnableSequence  # Updated import
-import os
+import google.generativeai as genai
 import json
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableSequence
+import os
 from datetime import datetime, timedelta
 
-
-openai_api_key = st.secrets.get("OPENAI_API_KEY")
-if not openai_api_key:
-    openai_api_key = os.environ.get("OPENAI_API_KEY")
-if not openai_api_key:
-    st.error("OpenAI API key not found. Please configure it in secrets.toml or environment variables.")
+# Set up Gemini API key
+gemini_api_key = st.secrets.get("GEMINI_API_KEY")
+if not gemini_api_key:
+    st.error("Gemini API key not found. Please configure it in secrets.toml or environment variables.")
     st.stop()
-os.environ["OPENAI_API_KEY"] = openai_api_key
-
+os.environ["GEMINI_API_KEY"] = gemini_api_key
+genai.configure(api_key=gemini_api_key)
 
 # Sample dataset
 @st.cache_data
@@ -35,7 +33,6 @@ def load_data():
     df["upcoming_quiz"] = pd.to_datetime(df["upcoming_quiz"])
     return df
 
-
 # Role-based access control
 def check_access(admin_role, query_grade, query_class, query_region):
     admin_scopes = {
@@ -51,9 +48,8 @@ def check_access(admin_role, query_grade, query_class, query_region):
         and query_region == scope["region"]
     )
 
-
-# LangChain setup with fallback
-llm = OpenAI(temperature=0.3)
+# LangChain setup with Gemini
+model = genai.GenerativeModel('gemini-2.0-flash')
 prompt = PromptTemplate(
     input_variables=["query"],
     template="""
@@ -70,15 +66,14 @@ prompt = PromptTemplate(
     """,
 )
 
-# Create a RunnableSequence instead of LLMChain
-chain = prompt | llm
-
+# Create a RunnableSequence
+chain = prompt | (lambda x: model.generate_content(x["query"]).text)
 
 # Process query and fetch data with fallback
 def process_query(query, admin_role):
     try:
-        # Parse query using LangChain
-        parsed = chain.invoke({"query": query})  # Use invoke instead of run
+        # Parse query using Gemini
+        parsed = chain.invoke({"query": query})
         parsed_data = json.loads(parsed) if isinstance(parsed, str) else parsed
 
         # Extract parsed information
@@ -135,35 +130,56 @@ def process_query(query, admin_role):
         return "Unable to process query."
 
     except Exception as e:
-        if "429" in str(e) or "insufficient_quota" in str(e):
-            return "Error: API quota exceeded. Please check your OpenAI plan or try again later."
         return f"Error processing query: {str(e)}"
 
-
-# Streamlit UI
+# Streamlit UI with Bonus Features
 st.title("Dumroo Admin Panel")
 st.write("Ask questions about student data in plain English")
 
 # Admin role selection
 admin_role = st.selectbox("Select your admin role", ["grade_8_admin", "grade_9_admin"])
 
-# Query input
+# Query input with history (Bonus: Agent-style handling)
+if "query_history" not in st.session_state:
+    st.session_state.query_history = []
 query = st.text_input(
     "Enter your query",
     placeholder="e.g., Which students haven't submitted their homework yet?",
+    key="query_input"
 )
 
 # Process query when button is clicked
 if st.button("Submit Query"):
     if query:
         result = process_query(query, admin_role)
+        st.session_state.query_history.append({"query": query, "result": result})
         st.write("Result:")
         st.write(result)
     else:
         st.write("Please enter a query.")
+
+# Display query history (Bonus: Agent-style handling)
+if st.session_state.query_history:
+    st.subheader("Query History")
+    for i, entry in enumerate(reversed(st.session_state.query_history)):
+        with st.expander(f"Query {len(st.session_state.query_history) - i}: {entry['query']}"):
+            st.write("Result:", entry["result"])
 
 # Example queries
 st.subheader("Example Queries")
 st.write("- Which students haven't submitted their homework yet?")
 st.write("- Show me performance data for Grade 8 from last week")
 st.write("- List all upcoming quizzes scheduled for next week")
+
+# Bonus: Modular database connection (placeholder for real DB)
+def connect_to_db():
+    # Placeholder for future DB connection (e.g., SQLAlchemy)
+    st.write("Database connection not implemented. Using cached data.")
+    return load_data()
+
+# Option to switch to DB (Bonus: Modularity)
+if st.checkbox("Use Database (Demo)"):
+    df = connect_to_db()
+    st.write("Data loaded from database (simulated):", df)
+else:
+    st.write("Using cached sample data.")
