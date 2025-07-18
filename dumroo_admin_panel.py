@@ -3,14 +3,16 @@ import pandas as pd
 import google.generativeai as genai
 import json
 from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnableSequence
+from langchain_core.runnables import RunnableLambda
 import os
 from datetime import datetime, timedelta
 
 # Set up Gemini API key
 gemini_api_key = st.secrets.get("GEMINI_API_KEY")
 if not gemini_api_key:
-    st.error("Gemini API key not found. Please configure it in secrets.toml or environment variables.")
+    st.error(
+        "Gemini API key not found. Please configure it in secrets.toml or environment variables."
+    )
     st.stop()
 os.environ["GEMINI_API_KEY"] = gemini_api_key
 genai.configure(api_key=gemini_api_key)
@@ -49,7 +51,7 @@ def check_access(admin_role, query_grade, query_class, query_region):
     )
 
 # LangChain setup with Gemini
-model = genai.GenerativeModel('gemini-2.0-flash')
+model = genai.GenerativeModel("gemini-2.0-flash")
 prompt = PromptTemplate(
     input_variables=["query"],
     template="""
@@ -60,21 +62,28 @@ prompt = PromptTemplate(
     4. The region (if mentioned, e.g., North or South)
     5. The time period (if mentioned, e.g., last week, next week)
     
-    Return the extracted information in JSON format.
+    Return the extracted information in valid JSON format with keys: "data_type", "grade", "class", "region", "time_period".
     
     Query: {query}
     """,
 )
 
-# Create a RunnableSequence
-chain = prompt | (lambda x: model.generate_content(x["query"]).text)
+# Create a RunnableSequence with proper handling
+def generate_gemini_response(query):
+    response = model.generate_content(query)
+    return response.text
+
+chain = prompt | RunnableLambda(generate_gemini_response)
 
 # Process query and fetch data with fallback
 def process_query(query, admin_role):
     try:
         # Parse query using Gemini
         parsed = chain.invoke({"query": query})
-        parsed_data = json.loads(parsed) if isinstance(parsed, str) else parsed
+        # Ensure the response is a string and attempt to parse as JSON
+        if not isinstance(parsed, str):
+            parsed = str(parsed)
+        parsed_data = json.loads(parsed)
 
         # Extract parsed information
         data_type = parsed_data.get("data_type")
@@ -129,6 +138,8 @@ def process_query(query, admin_role):
 
         return "Unable to process query."
 
+    except json.JSONDecodeError:
+        return "Error: Invalid JSON response from AI. Please ensure the query is clear."
     except Exception as e:
         return f"Error processing query: {str(e)}"
 
@@ -145,7 +156,7 @@ if "query_history" not in st.session_state:
 query = st.text_input(
     "Enter your query",
     placeholder="e.g., Which students haven't submitted their homework yet?",
-    key="query_input"
+    key="query_input",
 )
 
 # Process query when button is clicked
@@ -162,7 +173,9 @@ if st.button("Submit Query"):
 if st.session_state.query_history:
     st.subheader("Query History")
     for i, entry in enumerate(reversed(st.session_state.query_history)):
-        with st.expander(f"Query {len(st.session_state.query_history) - i}: {entry['query']}"):
+        with st.expander(
+            f"Query {len(st.session_state.query_history) - i}: {entry['query']}"
+        ):
             st.write("Result:", entry["result"])
 
 # Example queries
