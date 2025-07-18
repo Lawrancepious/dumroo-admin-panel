@@ -69,9 +69,10 @@ prompt = PromptTemplate(
 )
 
 # Create a RunnableLambda to handle Gemini response
-def generate_gemini_response(input_data):
-    query = input_data.get("query", "")
-    response = model.generate_content(query)
+def generate_gemini_response(prompt_value):
+    # Extract the text from StringPromptValue
+    query_text = prompt_value.text if hasattr(prompt_value, "text") else str(prompt_value)
+    response = model.generate_content(query_text)
     return response.text
 
 chain = prompt | RunnableLambda(generate_gemini_response)
