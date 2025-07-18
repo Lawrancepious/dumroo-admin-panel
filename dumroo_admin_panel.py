@@ -25,19 +25,22 @@ st.markdown("""
     .stApp {
         background-color: #f0f2f6;
         color: #333333;
+        font-family: 'Arial', sans-serif;
     }
     .sidebar .sidebar-content {
         background-color: #ffffff;
         padding: 20px;
         border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
     .stButton>button {
         background-color: #4CAF50;
         color: white;
+        border: none;
         border-radius: 5px;
         padding: 10px 20px;
         font-size: 16px;
-        visibility: visible !important;
+        transition: background-color 0.3s;
     }
     .stButton>button:hover {
         background-color: #45a049;
@@ -46,25 +49,33 @@ st.markdown("""
         border-radius: 5px;
         padding: 10px;
         background-color: #ffffff;
+        border: 1px solid #ddd;
         color: #333333;
-        visibility: visible !important;
     }
     .stExpander {
         border: 1px solid #ddd;
         border-radius: 5px;
         padding: 10px;
         background-color: #ffffff;
+        margin-bottom: 10px;
     }
     .stForm {
-        padding: 10px;
+        padding: 15px;
         background-color: #ffffff;
         border-radius: 5px;
-        visibility: visible !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
     }
     .result-table {
         background-color: #ffffff;
         padding: 10px;
         border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .stHeader {
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 10px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -137,10 +148,9 @@ chain = prompt | RunnableLambda(generate_gemini_response)
 
 # Process query and fetch data with fallback
 def process_query(query, admin_role):
-    with st.spinner("Processing your query..."):
+    with st.spinner("Processing..."):
         try:
             parsed = chain.invoke({"query": query})
-            st.write("Raw response:", parsed)
             cleaned_response = re.search(r"\{.*\}", parsed, re.DOTALL)
             if cleaned_response:
                 parsed = cleaned_response.group(0)
@@ -191,7 +201,7 @@ def process_query(query, admin_role):
             return pd.DataFrame({"Message": ["Unable to process query. Please use a valid query format."]})
 
         except json.JSONDecodeError:
-            return pd.DataFrame({"Error": [f"Invalid JSON response from AI. Raw response: {parsed}"]})
+            return pd.DataFrame({"Error": ["Invalid JSON response from AI"]})
         except Exception as e:
             return pd.DataFrame({"Error": [f"Error processing query: {str(e)}"]})
 
@@ -199,26 +209,23 @@ def process_query(query, admin_role):
 with st.sidebar:
     st.image("https://via.placeholder.com/150", use_container_width=True)
     st.title("Admin Dashboard")
-    admin_role = st.selectbox("Select your admin role", ["grade_8_admin", "grade_9_admin"], key="role_select")
+    admin_role = st.selectbox("Admin Role", ["grade_8_admin", "grade_9_admin"], key="role_select")
 
-st.title("Dumroo Admin Panel")
+st.markdown('<div class="stHeader">Dumroo Admin Panel</div>', unsafe_allow_html=True)
 st.write("Ask questions about student data in plain English")
 
 result_placeholder = st.empty()
 with st.form(key="query_form"):
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.write("Enter your query")
-        query = st.text_input("", placeholder="e.g., Which students haven't submitted their homework yet?", key="query_input")
+        query = st.text_input("", placeholder="e.g., Which students haven't submitted their homework yet?")
     with col2:
-        st.write("Submit Query")
         submit_button = st.form_submit_button("Submit")
     if submit_button and query:
         result = process_query(query, admin_role)
         if "query_history" not in st.session_state:
             st.session_state.query_history = []
         st.session_state.query_history.append({"query": query, "result": result})
-        st.success("Query processed!")
         result_placeholder.dataframe(result, use_container_width=True, hide_index=True)
 
 if st.session_state.get("query_history"):
@@ -237,7 +244,6 @@ with st.expander("Dataset Preview"):
 
 # Bonus: Modular database connection (placeholder for real DB)
 def connect_to_db():
-    st.write("Database connection not implemented. Using cached data.")
     return load_data()
 
 if st.checkbox("Use Database (Demo)"):
